@@ -3,81 +3,146 @@
 #include<math.h>
 #include<stdio.h>
 
-int xmin, ymin, xmax, ymax; 
-float fill[3] = {0.0, 255, 0.0};  
-float border[3] = {255, 0.0, 0.0};  
+const int MAX_POINTS = 20; 
+int poly_size = 4; 
+int poly_points[20][2]; 
 
-void Color_Pixel(int x, int y)  
-{  
-    glBegin(GL_POINTS);  
-        glColor3fv(fill);  
-        glVertex2i(x, y);  
-    glEnd();  
-    glFlush();  
+void display();
+
+void init() {
+    gluOrtho2D(0, 300, 0, 300);
 }
 
-void display()  
-{  
-    glClear(GL_COLOR_BUFFER_BIT);  
-    glColor3fv(border);  
-    glLineWidth(5);
-    glBegin(GL_LINES);  
-        glVertex2i(xmin, ymin);   glVertex2i(xmin, ymax);   
-        glVertex2i(xmax, ymin);   glVertex2i(xmax, ymax);  
-        glVertex2i(xmin, ymin);   glVertex2i(xmax, ymin);  
-        glVertex2i(xmin, ymax);   glVertex2i(xmax, ymax);  
-    glEnd();  
-    glFlush();  
-}
+int x_intersect(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4) { 
+    int num = (x1*y2 - y1*x2) * (x3-x4) - (x1-x2) * (x3*y4 - y3*x4); 
+    int den = (x1-x2) * (y3-y4) - (y1-y2) * (x3-x4); 
+    return num/den; 
+} 
+ // window                       // line
+int y_intersect(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4) { 
+    int num = (x1*y2 - y1*x2) * (y3-y4) - (y1-y2) * (x3*y4 - y3*x4); 
+    int den = (x1-x2) * (y3-y4) - (y1-y2) * (x3-x4); 
+    return num/den; 
+} 
+  
+void clip(int x1, int y1, int x2, int y2) { 
 
-void BoundaryFill(int x,int y)  
-{  
-    float curr[3];  
-    glReadPixels(x, y, 1.0, 1.0, GL_RGB, GL_FLOAT, curr);  
+    int new_points[MAX_POINTS][2], new_poly_size = 0; 
+  
+    for (int i = 0; i < poly_size; i++) { 
+        
+        int k = (i+1) % poly_size; 
+        int ix = poly_points[i][0], iy = poly_points[i][1]; 
+        int kx = poly_points[k][0], ky = poly_points[k][1]; 
+  
+        // Calculating position of first point w.r.t. clipper line 
+        int i_pos = (x2-x1) * (iy-y1) - (y2-y1) * (ix-x1); 
+  
+        // Calculating position of second point w.r.t. clipper line 
+        int k_pos = (x2-x1) * (ky-y1) - (y2-y1) * (kx-x1); 
+  
+        // inside 
+        if (i_pos < 0  && k_pos < 0) { 
+            new_points[new_poly_size][0] = kx; 
+            new_points[new_poly_size][1] = ky; 
+            new_poly_size++; 
+        } 
+  
+        // first point is outside 
+        else if (i_pos >= 0  && k_pos < 0) { 
+            new_points[new_poly_size][0] = x_intersect(x1, y1, x2, y2, ix, iy, kx, ky); 
+            new_points[new_poly_size][1] = y_intersect(x1, y1, x2, y2, ix, iy, kx, ky); 
+            new_poly_size++; 
+  
+            new_points[new_poly_size][0] = kx; 
+            new_points[new_poly_size][1] = ky; 
+            new_poly_size++; 
+        } 
+  
+        // second point is outside 
+        else if (i_pos < 0  && k_pos >= 0) { 
+            new_points[new_poly_size][0] = x_intersect(x1, y1, x2, y2, ix, iy, kx, ky); 
+            new_points[new_poly_size][1] = y_intersect(x1, y1, x2, y2, ix, iy, kx, ky); 
+            new_poly_size++; 
+        } 
+    } 
+  
+    poly_size = new_poly_size; 
+    for (int i = 0; i < poly_size; i++) 
+    { 
+        poly_points[i][0] = new_points[i][0]; 
+        poly_points[i][1] = new_points[i][1]; 
+    } 
 
-    if((curr[0] != border[0] && (curr[1]) != border[1] &&
-       (curr[2])!= border[2]) && (curr[0] != fill[0] && 
-       (curr[1]) != fill[1] && (curr[2]) != fill[2]))  
-    {  
-        Color_Pixel(x, y);  
-        BoundaryFill(x+1, y);  
-        BoundaryFill(x-1, y);  
-        BoundaryFill(x, y+1);  
-        BoundaryFill(x, y-1);  
-        BoundaryFill(x+1, y+1);  
-        BoundaryFill(x+1, y-1);  
-        BoundaryFill(x-1, y+1);  
-        BoundaryFill(x-1, y-1); 
-    }  
-}  
+} 
 
-void mouse(int btn, int state, int x, int y)  
-{  
-    if(btn == GLUT_LEFT_BUTTON && state == GLUT_DOWN) 
-    {
-        BoundaryFill(x, 500-y);  
+void suthHodgClip(int clipper_points[][2], int clipper_size) { 
+
+    for (int i = 0; i < clipper_size; i++) { 
+        int k = (i+1) % clipper_size; 
+        clip(clipper_points[i][0], clipper_points[i][1], clipper_points[k][0], clipper_points[k][1]); 
+    } 
+  
+    display();
+} 
+
+void ClipKey(unsigned char key, int x, int y)
+{
+    if(key == 'a') {
+        
+       int clipper_size = 4; 
+       int clipper_points[][2] = {{100,100}, {100,200}, {200,200}, {200,100}}; 
+       suthHodgClip(clipper_points, clipper_size); 
+       glFlush();
+
     }
 }
 
-void init()
-{
-    glClearColor(0.101, 1.0, 0.980, 1.0); //Background color - cyan
-    glMatrixMode(GL_PROJECTION);
-    gluOrtho2D(0, 500, 0, 500);
+void display() {
+
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // Box code
+    glColor3f(0.0,1.0,0.0);
+    glBegin(GL_LINE_LOOP);
+    glVertex2i(100,100);
+    glVertex2i(100,200);
+    glVertex2i(200,200);
+    glVertex2i(200,100);
+    glEnd();
+    glColor3f(1.0,0.0,0.0);
+    glBegin(GL_LINE_LOOP);
+
+    for (int i=0; i < poly_size; i++) 
+        glVertex2i(poly_points[i][0], poly_points[i][1]);
+
+    glEnd();
+
+    glFlush();
 }
+int main(int argc,char** argv) {
 
-int main(int argc, char** argv)  
-{  
-    printf("Enter Polygon Coordinates: ");
-    scanf("%d%d%d%d", &xmin ,&ymin,&xmax,&ymax);
-    glutInit(&argc, argv);  
-    glutInitDisplayMode (GLUT_SINGLE | GLUT_RGB);  
-    glutInitWindowSize(500, 500);  
-    glutCreateWindow("Boundary-Fill Algorithm");
+    glutInit(&argc,argv);
+    glutInitDisplayMode(GLUT_SINGLE|GLUT_RGB);
+    glutInitWindowSize(600,600);
 
+    printf("Enter the Square clipping Box co-ordinates: %d %d \n", 100, 200);
+    printf("Enter total number of the sides of the polygon: %d \n", poly_size);
+    printf("Enter the co-ordinates of a %d sided polygon: ", poly_size);
+
+    for(int i = 0; i < poly_size; i++){
+        for(int j = 0; j < 2; j++){
+            scanf("%d", &poly_points[i][j]);
+        }
+    }
+
+    glutCreateWindow("Sutherland – Hodgeman polygon clipping algorithm");
+
+    glutDisplayFunc(display);
+    glutKeyboardFunc(ClipKey);
     init();
-    glutDisplayFunc(display);  
-    glutMouseFunc(mouse); 
-    glutMainLoop();  
-    return 0;  
+    glutMainLoop();
+
+    return 0; 
 } 
+
