@@ -78,6 +78,3 @@ int main(int argc, char** argv)
     glutMainLoop();  
     return 0;  
 } 
-//gcc -o out Flood_Fill.c -lglut32 -lopengl32 -lglu32
-//.\out.exe
-//100 100 150 150
